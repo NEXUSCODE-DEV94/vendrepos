@@ -83,7 +83,7 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         embed.add_field(name="購入サーバー", value=f"{interaction.guild.name}\n({interaction.guild.id})", inline=True)
         embed.add_field(name="購入者", value=f"{interaction.user} ({interaction.user.id})", inline=False)
         embed.add_field(name="PayPayリンク", value=self.paypay_link.value, inline=False)
-        embed.add_field(name="info", value=f"||{info}||", inline=False)
+        embed.add_field(name="HiddenInfo", value=f"||{info}||", inline=False)
         embed.set_footer(text=datetime.datetime.now().strftime('%Y/%m/%d %H:%M'))
         mention = f"<@&{MENTION_ROLE_ID}>" if MENTION_ROLE_ID else ""
         await admin_channel.send(content=mention, embed=embed, view=AdminControlView())
@@ -110,9 +110,7 @@ class AdminControlView(discord.ui.View):
         item_name = embed.fields[0].value
         try:
             buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
-            info = "取得失敗"
-            if len(embed.fields) >= 6:
-                info = embed.fields[5].value.replace("|", "")
+            info = embed.fields[5].value.replace("|", "")
             buyer = await interaction.client.fetch_user(buyer_id)
             now = datetime.datetime.now().strftime('%y/%m/%d/ %H:%M:%S')
             dm = discord.Embed(title=f"**{item_name}**", color=discord.Color.green())
@@ -134,9 +132,12 @@ class AdminControlView(discord.ui.View):
             role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
             member = interaction.guild.get_member(buyer_id)
             if role and member: await member.add_roles(role)
-            embed.title = "【配達完了】" + (embed.title or "")
-            embed.color = discord.Color.blue()
-            await interaction.message.edit(embed=embed)
+            new_embed = embed.copy()
+            new_embed.title = "【配達完了】" + (new_embed.title or "")
+            new_embed.color = discord.Color.blue()
+            if len(new_embed.fields) > 5:
+                new_embed.remove_field(5)
+            await interaction.message.edit(embed=new_embed)
             await interaction.followup.send("配達完了しました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
     @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger, custom_id="admin_cancel_persist")
