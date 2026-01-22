@@ -63,7 +63,7 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         super().__init__()
         self.item_name, self.price, self.item_data = item_name, price, item_data
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True) # 即座に応答
         if not self.paypay_link.value.startswith("https://pay.paypay.ne.jp/"):
             await interaction.followup.send("無効なリンクです。", ephemeral=True)
             return
@@ -99,9 +99,17 @@ class AdminControlView(discord.ui.View):
             return
         await interaction.response.defer(ephemeral=True)
         embed = interaction.message.embeds[0]
+        
+        # フィールドから安全にデータを抽出
         buyer_id = int(re.search(r"\((\d+)\)", embed.fields[0].value).group(1))
         item_name = embed.fields[1].value.replace("*", "")
-        item_val = embed.fields[5].value.replace("|", "")
+        # インデックスエラー対策：アイテムリンク（在庫）フィールドを名前で探す
+        item_val = "情報なし"
+        for field in embed.fields:
+            if field.name == "アイテムリンク":
+                item_val = field.value.replace("|", "")
+                break
+
         try:
             buyer = await interaction.client.fetch_user(buyer_id)
             now = datetime.datetime.now().strftime('%y/%m/%d/ %H:%M:%S')
@@ -113,24 +121,22 @@ class AdminControlView(discord.ui.View):
             view.add_item(discord.ui.Button(label="サーバーへ移動する", url=INVITE_LINK, style=discord.ButtonStyle.link))
             await buyer.send(embed=dm, view=view)
             await buyer.send(content=f"**在庫内容:**\n{item_val}")
+            
             log = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
             if log:
                 le = discord.Embed(color=discord.Color.blue())
                 le.description = f"**商品名** **個数** **購入サーバー**\n```{item_name}``` ```1個``` ```{interaction.guild.name} ({interaction.guild.id})```\n**購入者**\n{buyer.mention} ({buyer.id})"
                 await log.send(embed=le)
+            
             role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
             member = interaction.guild.get_member(buyer_id)
             if role and member: await member.add_roles(role)
-            embed.title, embed.color = "【配達完了】" + (embed.title or ""), discord.Color.blue()
+            
+            embed.title = "【配達完了】" + (embed.title or "")
+            embed.color = discord.Color.blue()
             await interaction.message.edit(embed=embed, view=None)
             await interaction.followup.send("配達完了メッセージを送信し、ボタンを削除しました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
-    @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger, custom_id="admin_cancel_persist")
-    async def cancel_order(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = interaction.message.embeds[0]
-        buyer_id = int(re.search(r"\((\d+)\)", embed.fields[0].value).group(1))
-        item_name = embed.fields[1].value.replace("*", "")
-        await interaction.response.send_modal(CancelModal(buyer_id, item_name, interaction.message))
 
 class ConfirmView(discord.ui.View):
     def __init__(self, item_name, price, item_data):
@@ -138,6 +144,7 @@ class ConfirmView(discord.ui.View):
         self.item_name, self.price, self.item_data = item_name, price, item_data
     @discord.ui.button(label="購入を確定", style=discord.ButtonStyle.green, custom_id="confirm_purchase_persist")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Modalはdeferできないのでそのまま送る
         await interaction.response.send_modal(PayPayModal(self.item_name, self.price, self.item_data))
 
 class ItemSelectView(discord.ui.View):
@@ -149,6 +156,7 @@ class ItemSelectView(discord.ui.View):
         self.select.callback = self.select_callback
         self.add_item(self.select)
     async def select_callback(self, interaction: discord.Interaction):
+        # 選択後のメッセージ送信も即座に行う
         name = self.select.values[0]
         data = self.items_dict[name]
         embed = discord.Embed(color=discord.Color.green())
@@ -161,7 +169,7 @@ class PanelView(discord.ui.View):
         self.items = items
     @discord.ui.button(label="購入", style=discord.ButtonStyle.green, custom_id="panel_purchase_btn_persist")
     async def purchase_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True) # 即座に応答して時間稼ぎ
         if self.items is None and os.path.exists("items.json"):
             with open("items.json", "r", encoding="utf-8") as f: self.items = json.load(f)
         embed = discord.Embed(description="### 購入する商品を選択してください。", color=discord.Color.green())
@@ -177,13 +185,10 @@ class VendingBot(commands.Bot):
     async def update_channel_stats(self): await update_all_stats(self)
 
 bot = VendingBot()
-@bot.event
-async def on_ready():
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.competing, name="Cats Shop🛒"))
-    print(f"Logged in as {bot.user}")
 
 @bot.tree.command(name="vending-panel", description="設置")
 async def vending_panel(interaction: discord.Interaction):
+    # コマンドも即座に応答を返す
     await interaction.response.send_message("elminalでおけた", ephemeral=True)
     if not os.path.exists("items.json"): return
     with open("items.json", "r", encoding="utf-8") as f: items = json.load(f)
