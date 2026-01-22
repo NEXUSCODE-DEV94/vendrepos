@@ -39,13 +39,9 @@ async def update_all_stats(bot):
         except: pass
 
 def get_item_content(data):
-    """JSONからlink, links, sitesを判別して文字列で返す"""
-    if "link" in data:
-        return data["link"]
-    elif "links" in data:
-        return "\n".join(data["links"])
-    elif "sites" in data:
-        return "\n".join(data["sites"])
+    if "link" in data: return data["link"]
+    if "links" in data: return "\n".join(data["links"])
+    if "sites" in data: return "\n".join(data["sites"])
     return "情報なし"
 
 class CancelModal(discord.ui.Modal, title='キャンセル理由の入力'):
@@ -60,10 +56,12 @@ class CancelModal(discord.ui.Modal, title='キャンセル理由の入力'):
             embed = discord.Embed(title="注文キャンセルのお知らせ", color=discord.Color.red())
             embed.description = f"申し訳ありません。以下の注文はキャンセルされました。\n\n**商品名:** {self.item_name}\n**理由:** {self.reason.value}"
             await buyer.send(embed=embed)
+            
             new_embed = self.admin_msg.embeds[0]
             new_embed.title = "【キャンセル済み】" + (new_embed.title or "")
             new_embed.color = discord.Color.default()
-            await self.admin_msg.edit(embed=new_embed, view=None)
+            # ボタンは消さずに更新のみ
+            await self.admin_msg.edit(embed=new_embed)
             await interaction.followup.send("注文をキャンセルしました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
 
@@ -80,16 +78,19 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         admin_channel = interaction.client.get_channel(ADMIN_LOG_CHANNEL_ID)
         if not admin_channel: return
         
-        item_val = get_item_content(self.item_data)
+        info = get_item_content(self.item_data)
         
         embed = discord.Embed(title="半自販機: 購入リクエスト", color=discord.Color.green())
         embed.description = "__商品の値段とPayPayの金額がちゃんとあっているか確かめてください__"
+        # 3列横並び設定
+        embed.add_field(name="商品名", value=self.item_name, inline=True)
+        embed.add_field(name="個数", value="1個", inline=True)
+        embed.add_field(name="購入サーバー", value=f"{interaction.guild.name}\n({interaction.guild.id})", inline=True)
+        # その下に購入者
         embed.add_field(name="購入者", value=f"{interaction.user.mention} ({interaction.user.id})", inline=False)
-        embed.add_field(name="**商品名**", value=f"**{self.item_name}**", inline=True)
-        embed.add_field(name="**個数**", value="**1個**", inline=True)
-        embed.add_field(name="**サーバー**", value=f"**{interaction.guild.name} ({interaction.guild.id})**", inline=False)
         embed.add_field(name="PayPayリンク", value=self.paypay_link.value, inline=False)
-        embed.add_field(name="アイテム内容", value=f"||{item_val}||", inline=False)
+        # アイテムリンクという名前を消して中身だけ
+        embed.add_field(name="info", value=f"||{info}||", inline=False)
         embed.set_footer(text=datetime.datetime.now().strftime('%Y/%m/%d %H:%M'))
         
         mention = f"<@&{MENTION_ROLE_ID}>" if MENTION_ROLE_ID else ""
@@ -112,14 +113,10 @@ class AdminControlView(discord.ui.View):
             return
         await interaction.response.defer(ephemeral=True)
         embed = interaction.message.embeds[0]
-        buyer_id = int(re.search(r"\((\d+)\)", embed.fields[0].value).group(1))
-        item_name = embed.fields[1].value.replace("*", "")
         
-        item_val = "情報なし"
-        for field in embed.fields:
-            if field.name == "アイテム内容":
-                item_val = field.value.replace("|", "")
-                break
+        item_name = embed.fields[0].value
+        buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
+        info = embed.fields[5].value.replace("|", "")
 
         try:
             buyer = await interaction.client.fetch_user(buyer_id)
@@ -131,14 +128,16 @@ class AdminControlView(discord.ui.View):
             view = discord.ui.View()
             view.add_item(discord.ui.Button(label="サーバーへ移動する", url=INVITE_LINK, style=discord.ButtonStyle.link))
             await buyer.send(embed=dm, view=view)
-            await buyer.send(content=f"**在庫内容:**\n{item_val}")
+            await buyer.send(content=f"**在庫内容:**\n{info}")
             
             log = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
             if log:
                 le = discord.Embed(color=discord.Color.blue())
-                # 指定通り横並びに修正
-                le.description = f"**購入者** **個数** **サーバー**\n{buyer.mention} `1個` `{interaction.guild.name}`"
-                le.add_field(name="商品名", value=f"```{item_name}```", inline=False)
+                # ログも指定の3列形式に
+                le.add_field(name="商品名", value=item_name, inline=True)
+                le.add_field(name="個数", value="1個", inline=True)
+                le.add_field(name="購入サーバー", value=f"{interaction.guild.name}\n({interaction.guild.id})", inline=True)
+                le.add_field(name="購入者", value=f"{buyer.mention} ({buyer.id})", inline=False)
                 await log.send(embed=le)
             
             role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
@@ -147,15 +146,15 @@ class AdminControlView(discord.ui.View):
             
             embed.title = "【配達完了】" + (embed.title or "")
             embed.color = discord.Color.blue()
-            await interaction.message.edit(embed=embed, view=None)
+            # 配達後もView(キャンセルボタン等)を消さずに残す
+            await interaction.message.edit(embed=embed)
             await interaction.followup.send("配達完了しました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
     @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger, custom_id="admin_cancel_persist")
     async def cancel_order(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = interaction.message.embeds[0]
-        buyer_id = int(re.search(r"\((\d+)\)", embed.fields[0].value).group(1))
-        item_name = embed.fields[1].value.replace("*", "")
-        await interaction.response.send_modal(CancelModal(buyer_id, item_name, interaction.message))
+        buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
+        await interaction.response.send_modal(CancelModal(buyer_id, embed.fields[0].value, interaction.message))
 
 class ConfirmView(discord.ui.View):
     def __init__(self, item_name, price, item_data):
