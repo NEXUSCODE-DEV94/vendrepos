@@ -95,20 +95,24 @@ class AdminControlView(discord.ui.View):
         self.is_received = False
     @discord.ui.button(label="受け取り完了", style=discord.ButtonStyle.green, custom_id="admin_receive_persist")
     async def confirm_receive(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.is_received = True
-        button.disabled, button.label = True, "支払い受取済み"
-        await interaction.response.edit_message(view=self)
+        try:
+            self.is_received = True
+            button.disabled, button.label = True, "支払い受取済み"
+            await interaction.response.edit_message(view=self)
+        except: pass
     @discord.ui.button(label="商品を配達", style=discord.ButtonStyle.blurple, custom_id="admin_deliver_persist")
     async def deliver_item(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not getattr(self, "is_received", False):
+        if not getattr(self, "is_received", False) and button.label != "支払い受取済み":
             await interaction.response.send_message("先に「受け取り完了」を押してください。", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
         embed = interaction.message.embeds[0]
         item_name = embed.fields[0].value
-        buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
-        info = embed.fields[5].value.replace("|", "")
         try:
+            buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
+            info = "取得失敗"
+            if len(embed.fields) >= 6:
+                info = embed.fields[5].value.replace("|", "")
             buyer = await interaction.client.fetch_user(buyer_id)
             now = datetime.datetime.now().strftime('%y/%m/%d/ %H:%M:%S')
             dm = discord.Embed(title=f"**{item_name}**", color=discord.Color.green())
@@ -137,9 +141,11 @@ class AdminControlView(discord.ui.View):
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
     @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger, custom_id="admin_cancel_persist")
     async def cancel_order(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = interaction.message.embeds[0]
-        buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
-        await interaction.response.send_modal(CancelModal(buyer_id, embed.fields[0].value, interaction.message))
+        try:
+            embed = interaction.message.embeds[0]
+            buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
+            await interaction.response.send_modal(CancelModal(buyer_id, embed.fields[0].value, interaction.message))
+        except: pass
 
 class ConfirmView(discord.ui.View):
     def __init__(self, item_name, price, item_data):
@@ -170,11 +176,13 @@ class PanelView(discord.ui.View):
         self.items = items
     @discord.ui.button(label="購入", style=discord.ButtonStyle.green, custom_id="panel_purchase_btn_persist")
     async def purchase_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        if self.items is None and os.path.exists("items.json"):
-            with open("items.json", "r", encoding="utf-8") as f: self.items = json.load(f)
-        embed = discord.Embed(description="### 購入する商品を選択してください。", color=discord.Color.green())
-        await interaction.followup.send(embed=embed, view=ItemSelectView(self.items), ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+            if self.items is None and os.path.exists("items.json"):
+                with open("items.json", "r", encoding="utf-8") as f: self.items = json.load(f)
+            embed = discord.Embed(description="### 購入する商品を選択してください。", color=discord.Color.green())
+            await interaction.followup.send(embed=embed, view=ItemSelectView(self.items), ephemeral=True)
+        except: pass
 
 class VendingBot(commands.Bot):
     def __init__(self):
@@ -189,13 +197,15 @@ bot = VendingBot()
 
 @bot.tree.command(name="vending-panel", description="設置")
 async def vending_panel(interaction: discord.Interaction):
-    await interaction.response.send_message("elminalでおけた", ephemeral=True)
-    if not os.path.exists("items.json"): return
-    with open("items.json", "r", encoding="utf-8") as f: items = json.load(f)
-    embed = discord.Embed(title="R18 半自販機パネル", description="購入したい商品を下のメニューから選択してください。", color=discord.Color.green())
-    for n, d in items.items(): embed.add_field(name=f"**{n}**", value=f"```価格: {d.get('price', 0)}円```", inline=False)
-    embed.set_footer(text="Made by @4bc6")
-    await interaction.channel.send(embed=embed, view=PanelView(items))
+    try:
+        await interaction.response.send_message("elminalでおけた", ephemeral=True)
+        if not os.path.exists("items.json"): return
+        with open("items.json", "r", encoding="utf-8") as f: items = json.load(f)
+        embed = discord.Embed(title="R18 半自販機パネル", description="購入したい商品を下のメニューから選択してください。", color=discord.Color.green())
+        for n, d in items.items(): embed.add_field(name=f"**{n}**", value=f"```価格: {d.get('price', 0)}円```", inline=False)
+        embed.set_footer(text="Made by @4bc6")
+        await interaction.channel.send(embed=embed, view=PanelView(items))
+    except: pass
 
 if __name__ == "__main__":
     keep_alive()
