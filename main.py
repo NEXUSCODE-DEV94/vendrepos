@@ -45,7 +45,7 @@ def get_item_content(data):
     return "情報なし"
 
 class CancelModal(discord.ui.Modal, title='キャンセル理由の入力'):
-    reason = discord.ui.TextInput(label='キャンセル理由', style=discord.TextStyle.paragraph, placeholder='在庫切れのため、等', required=True)
+    reason = discord.ui.TextInput(label='キャンセル理由', style=discord.TextStyle.paragraph, placeholder='例)リンクが無効です', required=True)
     def __init__(self, buyer_id, item_name, admin_msg):
         super().__init__()
         self.buyer_id, self.item_name, self.admin_msg = buyer_id, item_name, admin_msg
@@ -132,7 +132,7 @@ class AdminControlView(discord.ui.View):
             role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
             member = interaction.guild.get_member(buyer_id)
             if role and member: await member.add_roles(role)
-            new_embed = embed.copy()
+            new_embed = discord.Embed.from_dict(embed.to_dict())
             new_embed.title = "【配達完了】" + (new_embed.title or "")
             new_embed.color = discord.Color.blue()
             if len(new_embed.fields) > 5:
@@ -199,7 +199,7 @@ bot = VendingBot()
 @bot.tree.command(name="vending-panel", description="設置")
 async def vending_panel(interaction: discord.Interaction):
     try:
-        await interaction.response.send_message("elminalでおけた", ephemeral=True)
+        await interaction.response.send_message("おけた", ephemeral=True)
         if not os.path.exists("items.json"): return
         with open("items.json", "r", encoding="utf-8") as f: items = json.load(f)
         embed = discord.Embed(title="R18 半自販機パネル", description="購入したい商品を下のメニューから選択してください。", color=discord.Color.green())
