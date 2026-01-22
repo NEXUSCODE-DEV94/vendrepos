@@ -79,7 +79,11 @@ class CancelModal(discord.ui.Modal, title='キャンセル理由の入力'):
             new_embed = self.admin_msg.embeds[0]
             new_embed.title = "【キャンセル済み】" + (new_embed.title or "")
             new_embed.color = discord.Color.default()
-            await self.admin_msg.edit(embed=new_embed)
+            
+            view = discord.ui.View.from_message(self.admin_msg)
+            for child in view.children:
+                child.disabled = True
+            await self.admin_msg.edit(embed=new_embed, view=view)
             await interaction.followup.send("注文をキャンセルしました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
 
@@ -172,7 +176,10 @@ class AdminControlView(discord.ui.View):
             new_embed = embed.copy()
             new_embed.title = "【配達完了】" + (new_embed.title or "")
             new_embed.color = discord.Color.blue()
-            await interaction.message.edit(embed=new_embed)
+            
+            for child in self.children:
+                child.disabled = True
+            await interaction.message.edit(embed=new_embed, view=self)
             await interaction.followup.send("配達処理を完了しました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
     @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger, custom_id="admin_cancel_persist")
