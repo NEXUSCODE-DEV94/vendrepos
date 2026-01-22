@@ -44,6 +44,26 @@ def get_item_content(data):
     if "sites" in data: return "\n".join(data["sites"])
     return "情報なし"
 
+class ManualLogView(discord.ui.View):
+    def __init__(self, item_name, buyer_info, buyer_id):
+        super().__init__(timeout=None)
+        self.item_name = item_name
+        self.buyer_info = buyer_info
+        self.buyer_id = buyer_id
+    @discord.ui.button(label="実績を送信", style=discord.ButtonStyle.green, custom_id="manual_log_persist")
+    async def send_log(self, interaction: discord.Interaction, button: discord.ui.Button):
+        log = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
+        if log:
+            le = discord.Embed(color=discord.Color.blue())
+            le.add_field(name="商品名", value=f"```{self.item_name}```", inline=True)
+            le.add_field(name="個数", value="```1個```", inline=True)
+            le.add_field(name="購入サーバー", value=f"```{interaction.guild.name}\n({interaction.guild.id})```", inline=True)
+            le.add_field(name="購入者", value=f"```{self.buyer_info} ({self.buyer_id})```", inline=False)
+            await log.send(embed=le)
+            button.disabled = True
+            await interaction.response.edit_message(view=self)
+            await interaction.followup.send("購入ログを送信しました。", ephemeral=True)
+
 class CancelModal(discord.ui.Modal, title='キャンセル理由の入力'):
     reason = discord.ui.TextInput(label='キャンセル理由', style=discord.TextStyle.paragraph, placeholder='例)リンクが無効です', required=True)
     def __init__(self, buyer_id, item_name, admin_msg):
@@ -107,7 +127,9 @@ class AdminControlView(discord.ui.View):
         embed = interaction.message.embeds[0]
         item_name = embed.fields[0].value
         try:
-            buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
+            buyer_match = re.search(r"(.*?) \((\d+)\)", embed.fields[3].value)
+            buyer_info = buyer_match.group(1)
+            buyer_id = int(buyer_match.group(2))
             info = "情報なし"
             if os.path.exists("items.json"):
                 with open("items.json", "r", encoding="utf-8") as f:
@@ -121,16 +143,29 @@ class AdminControlView(discord.ui.View):
             dm.add_field(name="**購入数**", value="```1個```", inline=True)
             view = discord.ui.View()
             view.add_item(discord.ui.Button(label="サーバーへ移動する", url=INVITE_LINK, style=discord.ButtonStyle.link))
-            await buyer.send(embed=dm, view=view)
-            await buyer.send(content=f"**在庫内容:**\n{info}")
-            log = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
-            if log:
-                le = discord.Embed(color=discord.Color.blue())
-                le.add_field(name="商品名", value=f"```{item_name}```", inline=True)
-                le.add_field(name="個数", value="```1個```", inline=True)
-                le.add_field(name="購入サーバー", value=f"```{interaction.guild.name}\n({interaction.guild.id})```", inline=True)
-                le.add_field(name="購入者", value=f"```{buyer} ({buyer.id})```", inline=False)
-                await log.send(embed=le)
+            
+            dm_sent = False
+            try:
+                await buyer.send(embed=dm, view=view)
+                await buyer.send(content=f"**在庫内容:**\n{info}")
+                dm_sent = True
+            except discord.Forbidden:
+                fail_embed = discord.Embed(title="DM送信失敗", description=f"購入者 <@{buyer_id}> に送信できませんでした。\n手動で送信してください。", color=discord.Color.orange())
+                fail_embed.add_field(name="在庫内容", value=f"```{info}```")
+                await interaction.channel.send(embed=fail_embed, view=ManualLogView(item_name, buyer_info, buyer_id))
+
+            if dm_sent:
+                success_embed = discord.Embed(description=f"購入者 <@{buyer_id}> へのDM送信が完了しました。", color=discord.Color.green())
+                await interaction.channel.send(embed=success_embed)
+                log = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
+                if log:
+                    le = discord.Embed(color=discord.Color.blue())
+                    le.add_field(name="商品名", value=f"```{item_name}```", inline=True)
+                    le.add_field(name="個数", value="```1個```", inline=True)
+                    le.add_field(name="購入サーバー", value=f"```{interaction.guild.name}\n({interaction.guild.id})```", inline=True)
+                    le.add_field(name="購入者", value=f"```{buyer} ({buyer.id})```", inline=False)
+                    await log.send(embed=le)
+
             role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
             member = interaction.guild.get_member(buyer_id)
             if role and member: await member.add_roles(role)
@@ -138,7 +173,7 @@ class AdminControlView(discord.ui.View):
             new_embed.title = "【配達完了】" + (new_embed.title or "")
             new_embed.color = discord.Color.blue()
             await interaction.message.edit(embed=new_embed)
-            await interaction.followup.send("配達完了しました。", ephemeral=True)
+            await interaction.followup.send("配達処理を完了しました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
     @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger, custom_id="admin_cancel_persist")
     async def cancel_order(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -189,8 +224,10 @@ class VendingBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="/", intents=discord.Intents.all())
     async def setup_hook(self):
-        self.add_view(PanelView()); self.add_view(AdminControlView())
-        self.update_channel_stats.start(); await self.tree.sync()
+        self.add_view(PanelView())
+        self.add_view(AdminControlView())
+        self.update_channel_stats.start()
+        await self.tree.sync()
     @tasks.loop(seconds=200)
     async def update_channel_stats(self): await update_all_stats(self)
 
