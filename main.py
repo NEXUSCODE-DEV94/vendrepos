@@ -56,11 +56,9 @@ class CancelModal(discord.ui.Modal, title='キャンセル理由の入力'):
             embed = discord.Embed(title="注文キャンセルのお知らせ", color=discord.Color.red())
             embed.description = f"申し訳ありません。以下の注文はキャンセルされました。\n\n**商品名:** {self.item_name}\n**理由:** {self.reason.value}"
             await buyer.send(embed=embed)
-            
             new_embed = self.admin_msg.embeds[0]
             new_embed.title = "【キャンセル済み】" + (new_embed.title or "")
             new_embed.color = discord.Color.default()
-            # ボタンは消さずに更新のみ
             await self.admin_msg.edit(embed=new_embed)
             await interaction.followup.send("注文をキャンセルしました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
@@ -77,21 +75,15 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
             return
         admin_channel = interaction.client.get_channel(ADMIN_LOG_CHANNEL_ID)
         if not admin_channel: return
-        
         info = get_item_content(self.item_data)
-        
         embed = discord.Embed(title="半自販機: 購入リクエスト", color=discord.Color.green())
         embed.description = "__商品の値段とPayPayの金額がちゃんとあっているか確かめてください__"
-        # 3列横並び設定
         embed.add_field(name="商品名", value=self.item_name, inline=True)
         embed.add_field(name="個数", value="1個", inline=True)
-        embed.add_field(name="購入サーバー", value=f{interaction.guild.name}\n({interaction.guild.id})", inline=True)
-        # その下に購入者
-        embed.add_field(name="購入者", value=f"{interaction.user.mention} ({interaction.user.id})", inline=False)
+        embed.add_field(name="購入サーバー", value=f"{interaction.guild.name}\n({interaction.guild.id})", inline=True)
+        embed.add_field(name="購入者", value=f"{interaction.user} ({interaction.user.id})", inline=False)
         embed.add_field(name="PayPayリンク", value=self.paypay_link.value, inline=False)
-
         embed.set_footer(text=datetime.datetime.now().strftime('%Y/%m/%d %H:%M'))
-        
         mention = f"<@&{MENTION_ROLE_ID}>" if MENTION_ROLE_ID else ""
         await admin_channel.send(content=mention, embed=embed, view=AdminControlView())
         await interaction.followup.send(embed=discord.Embed(description="### 購入をリクエストしました。", color=discord.Color.green()), ephemeral=True)
@@ -112,11 +104,9 @@ class AdminControlView(discord.ui.View):
             return
         await interaction.response.defer(ephemeral=True)
         embed = interaction.message.embeds[0]
-        
         item_name = embed.fields[0].value
         buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
         info = embed.fields[5].value.replace("|", "")
-
         try:
             buyer = await interaction.client.fetch_user(buyer_id)
             now = datetime.datetime.now().strftime('%y/%m/%d/ %H:%M:%S')
@@ -128,26 +118,19 @@ class AdminControlView(discord.ui.View):
             view.add_item(discord.ui.Button(label="サーバーへ移動する", url=INVITE_LINK, style=discord.ButtonStyle.link))
             await buyer.send(embed=dm, view=view)
             await buyer.send(content=f"**在庫内容:**\n{info}")
-
-　　　　　　embed.add_field(name="購入者", value=f"{interaction.user} ({interaction.user.id})", inline=False)
-
             log = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
             if log:
                 le = discord.Embed(color=discord.Color.blue())
-                # ログも指定の3列形式に
-                le.add_field(name="商品名", value=```item_name```, inline=True)
+                le.add_field(name="商品名", value=f"```{item_name}```", inline=True)
                 le.add_field(name="個数", value="```1個```", inline=True)
                 le.add_field(name="購入サーバー", value=f"```{interaction.guild.name}\n({interaction.guild.id})```", inline=True)
                 le.add_field(name="購入者", value=f"```{buyer} ({buyer.id})```", inline=False)
                 await log.send(embed=le)
-            
             role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
             member = interaction.guild.get_member(buyer_id)
             if role and member: await member.add_roles(role)
-            
             embed.title = "【配達完了】" + (embed.title or "")
             embed.color = discord.Color.blue()
-            # 配達後もView(キャンセルボタン等)を消さずに残す
             await interaction.message.edit(embed=embed)
             await interaction.followup.send("配達完了しました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
