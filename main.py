@@ -75,7 +75,6 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
             return
         admin_channel = interaction.client.get_channel(ADMIN_LOG_CHANNEL_ID)
         if not admin_channel: return
-        info = get_item_content(self.item_data)
         embed = discord.Embed(title="半自販機: 購入リクエスト", color=discord.Color.green())
         embed.description = "__商品の値段とPayPayの金額がちゃんとあっているか確かめてください__"
         embed.add_field(name="商品名", value=self.item_name, inline=True)
@@ -109,7 +108,11 @@ class AdminControlView(discord.ui.View):
         item_name = embed.fields[0].value
         try:
             buyer_id = int(re.search(r"\((\d+)\)", embed.fields[3].value).group(1))
-            info = embed.fields[5].value.replace("|", "")
+            info = "情報なし"
+            if os.path.exists("items.json"):
+                with open("items.json", "r", encoding="utf-8") as f:
+                    items = json.load(f)
+                info = get_item_content(items.get(item_name, {}))
             buyer = await interaction.client.fetch_user(buyer_id)
             now = datetime.datetime.now().strftime('%y/%m/%d/ %H:%M:%S')
             dm = discord.Embed(title=f"**{item_name}**", color=discord.Color.green())
@@ -131,11 +134,9 @@ class AdminControlView(discord.ui.View):
             role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
             member = interaction.guild.get_member(buyer_id)
             if role and member: await member.add_roles(role)
-            new_embed = discord.Embed.from_dict(embed.to_dict())
+            new_embed = embed.copy()
             new_embed.title = "【配達完了】" + (new_embed.title or "")
             new_embed.color = discord.Color.blue()
-            if len(new_embed.fields) > 5:
-                new_embed.remove_field(5)
             await interaction.message.edit(embed=new_embed)
             await interaction.followup.send("配達完了しました。", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
