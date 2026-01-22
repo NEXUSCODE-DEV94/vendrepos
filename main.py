@@ -106,13 +106,13 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         embed = discord.Embed(title="半自販機: 購入リクエスト", color=discord.Color.green())
         embed.description = "__商品の値段とPayPayの金額がちゃんとあっているか確かめてください__"
         embed.add_field(name="購入者", value=f"{interaction.user.mention} ({interaction.user.id})", inline=False)
-        embed.add_field(name="**商品名**", value=f"**{self.item_name}**", inline=True)
-        embed.add_field(name="**個数**", value="**1個**", inline=True)
-        embed.add_field(name="**サーバー**", value=f"**{interaction.guild.name}**", inline=True)
+        embed.add_field(name="商品名", value=f"**{self.item_name}**", inline=True)
+        embed.add_field(name="個数", value="**1個**", inline=True)
+        embed.add_field(name="サーバー", value=f"**{interaction.guild.name} ({interaction.guild.id})**", inline=False)
         embed.add_field(name="PayPayリンク", value=self.paypay_link.value, inline=False)
         
-        item_link = self.item_data.get("link", "情報なし")
-        embed.add_field(name="アイテムリンク", value=f"||{item_link}||", inline=False)
+        item_url = self.item_data.get("url", "情報なし")
+        embed.add_field(name="在庫データ(URL)", value=f"||{item_url}||", inline=False)
         
         now = datetime.datetime.now().strftime('%Y/%m/%d %H:%M')
         embed.set_footer(text=now)
@@ -143,7 +143,7 @@ class AdminControlView(discord.ui.View):
         embed = interaction.message.embeds[0]
         buyer_id = int(re.search(r"\((\.?[0-9]+)\)", embed.fields[0].value).group(1))
         item_name = embed.fields[1].value.replace("*", "")
-        item_link = embed.fields[5].value.replace("|", "")
+        item_url = embed.fields[5].value.replace("|", "")
 
         await interaction.response.defer(ephemeral=True)
 
@@ -160,12 +160,12 @@ class AdminControlView(discord.ui.View):
             dm_view.add_item(discord.ui.Button(label="サーバーへ移動する", url=INVITE_LINK, style=discord.ButtonStyle.link))
 
             await buyer.send(embed=dm_embed, view=dm_view)
-            await buyer.send(content=f"**在庫内容:**\n{item_link}")
+            await buyer.send(content=f"**在庫内容:**\n{item_url}")
 
             log_channel = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
             if log_channel:
                 log_embed = discord.Embed(color=discord.Color.blue())
-                log_embed.description = f"**商品名** **個数** **購入サーバー**\n```{item_name}``` ```1個``` ```{interaction.guild.name}```\n**購入者**\n{buyer.mention} ({buyer.id})"
+                log_embed.description = f"**商品名** **個数** **購入サーバー**\n```{item_name}``` ```1個``` ```{interaction.guild.name} ({interaction.guild.id})```\n**購入者**\n{buyer.mention} ({buyer.id})"
                 await log_channel.send(embed=log_embed)
                 await update_all_stats(interaction.client)
 
@@ -264,20 +264,16 @@ async def on_ready():
 @bot.tree.command(name="vending-panel", description="半自販機パネルを設置します")
 async def vending_panel(interaction: discord.Interaction):
     await interaction.response.send_message("elminalでおけた", ephemeral=True)
-    
     if not os.path.exists("items.json"):
         await interaction.followup.send("Error: items.jsonが見つかりません。", ephemeral=True)
         return
-        
     with open("items.json", "r", encoding="utf-8") as f:
         items = json.load(f)
-        
     embed = discord.Embed(title="R18 半自販機パネル", description="購入したい商品を下のメニューから選択してください。", color=discord.Color.green())
     for name, data in items.items():
         price = data.get("price", 0)
         embed.add_field(name=f"**{name}**", value=f"```価格: {price}円```", inline=False)
     embed.set_footer(text="Made by @4bc6")
-    
     await interaction.channel.send(embed=embed, view=PanelView(items))
 
 if __name__ == "__main__":
