@@ -85,12 +85,11 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         # 3列横並び設定
         embed.add_field(name="商品名", value=self.item_name, inline=True)
         embed.add_field(name="個数", value="1個", inline=True)
-        embed.add_field(name="購入サーバー", value=f"{interaction.guild.name}\n({interaction.guild.id})", inline=True)
+        embed.add_field(name="購入サーバー", value=f{interaction.guild.name}\n({interaction.guild.id})", inline=True)
         # その下に購入者
         embed.add_field(name="購入者", value=f"{interaction.user.mention} ({interaction.user.id})", inline=False)
         embed.add_field(name="PayPayリンク", value=self.paypay_link.value, inline=False)
-        # アイテムリンクという名前を消して中身だけ
-        embed.add_field(name="info", value=f"||{info}||", inline=False)
+
         embed.set_footer(text=datetime.datetime.now().strftime('%Y/%m/%d %H:%M'))
         
         mention = f"<@&{MENTION_ROLE_ID}>" if MENTION_ROLE_ID else ""
@@ -129,15 +128,17 @@ class AdminControlView(discord.ui.View):
             view.add_item(discord.ui.Button(label="サーバーへ移動する", url=INVITE_LINK, style=discord.ButtonStyle.link))
             await buyer.send(embed=dm, view=view)
             await buyer.send(content=f"**在庫内容:**\n{info}")
-            
+
+　　　　　　embed.add_field(name="購入者", value=f"{interaction.user} ({interaction.user.id})", inline=False)
+
             log = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
             if log:
                 le = discord.Embed(color=discord.Color.blue())
                 # ログも指定の3列形式に
-                le.add_field(name="商品名", value=item_name, inline=True)
-                le.add_field(name="個数", value="1個", inline=True)
-                le.add_field(name="購入サーバー", value=f"{interaction.guild.name}\n({interaction.guild.id})", inline=True)
-                le.add_field(name="購入者", value=f"{buyer.mention} ({buyer.id})", inline=False)
+                le.add_field(name="商品名", value=```item_name```, inline=True)
+                le.add_field(name="個数", value="```1個```", inline=True)
+                le.add_field(name="購入サーバー", value=f"```{interaction.guild.name}\n({interaction.guild.id})```", inline=True)
+                le.add_field(name="購入者", value=f"```{buyer} ({buyer.id})```", inline=False)
                 await log.send(embed=le)
             
             role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
