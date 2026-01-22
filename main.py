@@ -51,7 +51,7 @@ class CancelModal(discord.ui.Modal, title='キャンセル理由の入力'):
             embed.description = f"**商品:** {self.item_name}\n**理由:** {self.reason.value}"
             await buyer.send(embed=embed)
             new_embed = self.admin_msg.embeds[0]
-            new_embed.title = "【キャンセル】" + new_embed.title
+            new_embed.title = "【キャンセル】" + (new_embed.title or "")
             await self.admin_msg.edit(embed=new_embed, view=None)
             await interaction.followup.send("キャンセル完了", ephemeral=True)
         except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
@@ -62,10 +62,10 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         super().__init__()
         self.item_name, self.price, self.item_data = item_name, price, item_data
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.paypay_link.value.startswith("https://pay.paypay.ne.jp/"):
-            await interaction.response.send_message("無効なリンク", ephemeral=True)
-            return
         await interaction.response.defer(ephemeral=True)
+        if not self.paypay_link.value.startswith("https://pay.paypay.ne.jp/"):
+            await interaction.followup.send("無効なリンク", ephemeral=True)
+            return
         admin_channel = interaction.client.get_channel(ADMIN_LOG_CHANNEL_ID)
         item_val = self.item_data.get("url") or self.item_data.get("link") or self.item_data.get("sites", "情報なし")
         embed = discord.Embed(title="購入リクエスト", color=discord.Color.green())
@@ -81,8 +81,9 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         await interaction.followup.send("リクエスト完了", ephemeral=True)
 
 class AdminControlView(discord.ui.View):
-    def __init__(self): super().__init__(timeout=None)
-    self.is_received = False
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.is_received = False
     @discord.ui.button(label="受け取り完了", style=discord.ButtonStyle.green, custom_id="admin_receive_persist")
     async def confirm_receive(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.is_received = True
@@ -90,7 +91,7 @@ class AdminControlView(discord.ui.View):
         await interaction.response.edit_message(view=self)
     @discord.ui.button(label="配達", style=discord.ButtonStyle.blurple, custom_id="admin_deliver_persist")
     async def deliver_item(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.is_received:
+        if not getattr(self, "is_received", False):
             await interaction.response.send_message("先に「受け取り完了」を押してください", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
