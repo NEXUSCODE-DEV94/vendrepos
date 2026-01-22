@@ -6,6 +6,8 @@ import datetime
 import os
 import re
 from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -16,6 +18,19 @@ MENTION_ROLE_ID = 1459385479026966661
 CUSTOMER_ROLE_ID = 1319214442537422878
 INVITE_LINK = "https://discord.gg/9WrjmX5Rw9"
 TARGET_CHANNEL_IDS = [1463458889831026739, 1463426467957440603]
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 
 async def update_all_stats(bot):
     for channel_id in TARGET_CHANNEL_IDS:
@@ -97,6 +112,7 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         embed.add_field(name="PayPayリンク", value=self.paypay_link.value, inline=False)
         
         item_link = self.item_data.get("link", "情報なし")
+        embed.add_field(name="アイテムリンク", value=f"||{item_link}||", inline=False)
         
         now = datetime.datetime.now().strftime('%Y/%m/%d %H:%M')
         embed.set_footer(text=now)
@@ -127,7 +143,7 @@ class AdminControlView(discord.ui.View):
         embed = interaction.message.embeds[0]
         buyer_id = int(re.search(r"\((\.?[0-9]+)\)", embed.fields[0].value).group(1))
         item_name = embed.fields[1].value.replace("*", "")
-        item_link = embed.fields[4].value.replace("|", "")
+        item_link = embed.fields[5].value.replace("|", "")
 
         await interaction.response.defer(ephemeral=True)
 
@@ -247,17 +263,23 @@ async def on_ready():
 
 @bot.tree.command(name="vending-panel", description="半自販機パネルを設置します")
 async def vending_panel(interaction: discord.Interaction):
+    await interaction.response.send_message("elminalでおけた", ephemeral=True)
+    
     if not os.path.exists("items.json"):
-        await interaction.response.send_message("Error: items.jsonが見つかりません。", ephemeral=True)
+        await interaction.followup.send("Error: items.jsonが見つかりません。", ephemeral=True)
         return
+        
     with open("items.json", "r", encoding="utf-8") as f:
         items = json.load(f)
+        
     embed = discord.Embed(title="R18 半自販機パネル", description="購入したい商品を下のメニューから選択してください。", color=discord.Color.green())
     for name, data in items.items():
         price = data.get("price", 0)
         embed.add_field(name=f"**{name}**", value=f"```価格: {price}円```", inline=False)
     embed.set_footer(text="Made by @4bc6")
-    await interaction.response.send_message(embed=embed, view=PanelView(items))
+    
+    await interaction.channel.send(embed=embed, view=PanelView(items))
 
 if __name__ == "__main__":
+    keep_alive()
     bot.run(TOKEN)
