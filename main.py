@@ -83,7 +83,6 @@ class PayPayModal(discord.ui.Modal, title='PayPay決済'):
         embed.add_field(name="購入サーバー", value=f"{interaction.guild.name}\n({interaction.guild.id})", inline=True)
         embed.add_field(name="購入者", value=f"{interaction.user} ({interaction.user.id})", inline=False)
         embed.add_field(name="PayPayリンク", value=self.paypay_link.value, inline=False)
-        embed.add_field(name="HiddenInfo", value=f"||{info}||", inline=False)
         embed.set_footer(text=datetime.datetime.now().strftime('%Y/%m/%d %H:%M'))
         mention = f"<@&{MENTION_ROLE_ID}>" if MENTION_ROLE_ID else ""
         await admin_channel.send(content=mention, embed=embed, view=AdminControlView())
