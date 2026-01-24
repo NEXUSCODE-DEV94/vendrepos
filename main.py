@@ -76,9 +76,12 @@ class CancelModal(discord.ui.Modal, title='キャンセル理由の入力'):
             embed = discord.Embed(title="注文キャンセルのお知らせ", color=discord.Color.red())
             embed.description = f"申し訳ありません。以下の注文はキャンセルされました。\n\n**商品名:** {self.item_name}\n**理由:** {self.reason.value}"
             await buyer.send(embed=embed)
+            
             new_embed = self.admin_msg.embeds[0]
             new_embed.title = "【キャンセル済み】" + (new_embed.title or "")
             new_embed.color = discord.Color.default()
+            new_embed.add_field(name="対応管理者", value=f"{interaction.user.mention}", inline=False)
+            new_embed.add_field(name="キャンセル理由", value=f"```{self.reason.value}```", inline=False)
             
             view = discord.ui.View.from_message(self.admin_msg)
             for child in view.children:
@@ -115,73 +118,94 @@ class AdminControlView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.is_received = False
+        self.receiver = None
+
     @discord.ui.button(label="受け取り完了", style=discord.ButtonStyle.green, custom_id="admin_receive_persist")
     async def confirm_receive(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            self.is_received = True
-            button.disabled, button.label = True, "支払い受取済み"
-            await interaction.response.edit_message(view=self)
-        except: pass
+        self.is_received = True
+        self.receiver = interaction.user
+        button.disabled = True
+        button.label = "支払い受取済み"
+        
+        # 埋め込みに受け取り者を表示
+        embed = interaction.message.embeds[0]
+        embed.add_field(name="支払い確認者", value=f"{interaction.user.mention}", inline=True)
+        await interaction.response.edit_message(embed=embed, view=self)
+
     @discord.ui.button(label="商品を配達", style=discord.ButtonStyle.blurple, custom_id="admin_deliver_persist")
     async def deliver_item(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not getattr(self, "is_received", False) and button.label != "支払い受取済み":
+        if not self.is_received:
             await interaction.response.send_message("先に「受け取り完了」を押してください。", ephemeral=True)
             return
+        
         await interaction.response.defer(ephemeral=True)
         embed = interaction.message.embeds[0]
         item_name = embed.fields[0].value
+        
         try:
             buyer_match = re.search(r"(.*?) \((\d+)\)", embed.fields[3].value)
-            buyer_info = buyer_match.group(1)
             buyer_id = int(buyer_match.group(2))
+            
             info = "情報なし"
             if os.path.exists("items.json"):
                 with open("items.json", "r", encoding="utf-8") as f:
                     items = json.load(f)
                 info = get_item_content(items.get(item_name, {}))
+            
             buyer = await interaction.client.fetch_user(buyer_id)
             now = datetime.datetime.now().strftime('%y/%m/%d/ %H:%M:%S')
+            
+            # ユーザーへのDM
             dm = discord.Embed(title=f"**{item_name}**", color=discord.Color.green())
             dm.description = f"購入日\n```{now}```\n**購入サーバー**\n```Cats shop\n({interaction.guild.id})```"
             dm.add_field(name="**商品名**", value=f"```{item_name}```", inline=False)
             dm.add_field(name="**購入数**", value="```1個```", inline=True)
-            view = discord.ui.View()
-            view.add_item(discord.ui.Button(label="サーバーへ移動する", url=INVITE_LINK, style=discord.ButtonStyle.link))
+            dm_view = discord.ui.View()
+            dm_view.add_item(discord.ui.Button(label="サーバーへ移動する", url=INVITE_LINK, style=discord.ButtonStyle.link))
             
             dm_sent = False
             try:
-                await buyer.send(embed=dm, view=view)
+                await buyer.send(embed=dm, view=dm_view)
                 await buyer.send(content=f"**在庫内容:**\n{info}")
                 dm_sent = True
             except discord.Forbidden:
                 fail_embed = discord.Embed(title="DM送信失敗", description=f"購入者 <@{buyer_id}> に送信できませんでした。\n手動で送信してください。", color=discord.Color.orange())
                 fail_embed.add_field(name="在庫内容", value=f"```{info}```")
-                await interaction.channel.send(embed=fail_embed, view=ManualLogView(item_name, buyer_info, buyer_id))
+                await interaction.channel.send(embed=fail_embed, view=ManualLogView(item_name, buyer_match.group(1), buyer_id))
 
+            # 管理ログ・ロール付与
             if dm_sent:
-                success_embed = discord.Embed(description=f"購入者 <@{buyer_id}> へのDM送信が完了しました。", color=discord.Color.green())
-                await interaction.channel.send(embed=success_embed)
                 log = interaction.client.get_channel(PURCHASE_LOG_CHANNEL_ID)
                 if log:
                     le = discord.Embed(color=discord.Color.blue())
                     le.add_field(name="商品名", value=f"```{item_name}```", inline=True)
                     le.add_field(name="個数", value="```1個```", inline=True)
-                    le.add_field(name="購入サーバー", value=f"```{interaction.guild.name}\n({interaction.guild.id})```", inline=True)
+                    le.add_field(name="購入サーバー", value=f"```{interaction.guild.name}```", inline=True)
                     le.add_field(name="購入者", value=f"```{buyer} ({buyer.id})```", inline=False)
+                    le.add_field(name="配達担当", value=f"{interaction.user.mention}", inline=False)
                     await log.send(embed=le)
 
-            role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
+            # ロール付与
             member = interaction.guild.get_member(buyer_id)
+            role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
             if role and member: await member.add_roles(role)
+
+            # 管理画面の更新
             new_embed = embed.copy()
             new_embed.title = "【配達完了】" + (new_embed.title or "")
             new_embed.color = discord.Color.blue()
+            new_embed.add_field(name="配達担当者", value=f"{interaction.user.mention}", inline=True)
             
+            # 全ボタン無効化
             for child in self.children:
                 child.disabled = True
+            
             await interaction.message.edit(embed=new_embed, view=self)
-            await interaction.followup.send("配達処理を完了しました。", ephemeral=True)
-        except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
+            await interaction.followup.send(f"購入者 <@{buyer_id}> への配達を完了しました。", ephemeral=True)
+
+        except Exception as e: 
+            await interaction.followup.send(f"エラー: {e}", ephemeral=True)
+
     @discord.ui.button(label="キャンセル", style=discord.ButtonStyle.danger, custom_id="admin_cancel_persist")
     async def cancel_order(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
@@ -210,7 +234,7 @@ class ItemSelectView(discord.ui.View):
         name = self.select.values[0]
         data = self.items_dict[name]
         embed = discord.Embed(color=discord.Color.green())
-        embed.description = f"# 購入確認\n\n**商品名:** **{name}**\n**個数** 1個\n**金額:** {data['price']}円\n\n**__⚠️ <@1463430104150573209> からのDMを許可していないと商品が受け取れない可能性があります__**"
+        embed.description = f"# 購入確認\n\n**商品名:** **{name}**\n**個数** 1個\n**金額:** {data['price']}円\n\n**__⚠️ DMを許可していないと商品が受け取れない可能性があります__**"
         await interaction.response.send_message(embed=embed, view=ConfirmView(name, data['price'], data), ephemeral=True)
 
 class PanelView(discord.ui.View):
