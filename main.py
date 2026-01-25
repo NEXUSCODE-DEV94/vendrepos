@@ -182,7 +182,6 @@ class AdminControlView(discord.ui.View):
                     le.add_field(name="個数", value="```1個```", inline=True)
                     le.add_field(name="購入サーバー", value=f"```{interaction.guild.name}```", inline=True)
                     le.add_field(name="購入者", value=f"```{buyer} ({buyer.id})```", inline=False)
-                    le.add_field(name="配達担当", value=f"{interaction.user.mention}", inline=False)
                     await log.send(embed=le)
 
             # ロール付与
